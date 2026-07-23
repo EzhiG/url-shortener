@@ -20,7 +20,15 @@ func generateId() string {
 	return b.String()
 }
 
-func ShortenUrl(str string) (string, error) {
+type Service struct {
+	storage repository.Storage
+}
+
+func NewService(storage repository.Storage) *Service {
+	return &Service{storage: storage}
+}
+
+func (s *Service) ShortenUrl(str string) (string, error) {
 	parsed, err := url.Parse(str)
 
 	if (err != nil) || (parsed.Scheme != "http" && parsed.Scheme != "https") {
@@ -28,11 +36,11 @@ func ShortenUrl(str string) (string, error) {
 	}
 
 	id := generateId()
-	repository.Save(id, parsed.String())
+	s.storage.Save(id, parsed.String())
 
 	return id, nil
 }
 
-func ExpandUrl(id string) string {
-	return repository.Get(id)
+func (s *Service) ExpandUrl(id string) (string, bool) {
+	return s.storage.Get(id)
 }

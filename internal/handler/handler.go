@@ -7,11 +7,19 @@ import (
 	"github.com/EzhiG/url-shortener/internal/service"
 )
 
-func GetShortenUrl(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	expanded := service.ExpandUrl(id)
+type Handler struct {
+	service *service.Service
+}
 
-	if expanded == "" {
+func NewHandler(service *service.Service) *Handler {
+	return &Handler{service: service}
+}
+
+func (h *Handler) GetShortenUrl(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	expanded, ok := h.service.ExpandUrl(id)
+
+	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -20,7 +28,7 @@ func GetShortenUrl(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func PostShortenUrl(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) PostShortenUrl(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
 
@@ -29,7 +37,7 @@ func PostShortenUrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := service.ShortenUrl(string(data))
+	id, err := h.service.ShortenUrl(string(data))
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)

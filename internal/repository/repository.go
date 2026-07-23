@@ -1,11 +1,23 @@
 package repository
 
-var store = make(map[string]string)
-
-func Save(id, url string) {
-	store[id] = url
+type Storage interface {
+	Save(id, url string)
+	Get(id string) (string, bool)
 }
 
-func Get(id string) string {
-	return store[id]
+type MapStorage struct {
+	data map[string]string
+}
+
+func NewMapStorage() *MapStorage {
+	return &MapStorage{data: make(map[string]string)}
+}
+
+func (s *MapStorage) Save(id, url string) {
+	s.data[id] = url
+}
+
+func (s *MapStorage) Get(id string) (string, bool) {
+	url, ok := s.data[id]
+	return url, ok
 }

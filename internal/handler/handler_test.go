@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/EzhiG/url-shortener/internal/service"
+	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
 type mockStorage struct {
@@ -31,7 +31,7 @@ func (m *mockStorage) Get(id string) (string, bool) {
 }
 
 func newTestHandler(storage *mockStorage) *Handler {
-	svc := service.NewService(storage)
+	svc := shortener.NewService(storage)
 	return NewHandler(svc)
 }
 

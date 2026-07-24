@@ -4,14 +4,14 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/EzhiG/url-shortener/internal/service"
+	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
 type Handler struct {
-	service *service.Service
+	service *shortener.Service
 }
 
-func NewHandler(service *service.Service) *Handler {
+func NewHandler(service *shortener.Service) *Handler {
 	return &Handler{service: service}
 }
 

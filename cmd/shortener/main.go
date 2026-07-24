@@ -5,12 +5,12 @@ import (
 
 	"github.com/EzhiG/url-shortener/internal/handler"
 	"github.com/EzhiG/url-shortener/internal/repository"
-	"github.com/EzhiG/url-shortener/internal/service"
+	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
 func main() {
 	storage := repository.NewMapStorage()
-	serv := service.NewService(storage)
+	serv := shortener.NewService(storage)
 	h := handler.NewHandler(serv)
 
 	mux := http.NewServeMux()

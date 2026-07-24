@@ -30,9 +30,11 @@ func (m *mockStorage) Get(id string) (string, bool) {
 	return url, ok
 }
 
+const testBaseURL = "http://localhost:8080"
+
 func newTestHandler(storage *mockStorage) *Handler {
 	svc := shortener.NewService(storage)
-	return NewHandler(svc)
+	return NewHandler(svc, testBaseURL)
 }
 
 type postWant struct {
@@ -83,7 +85,7 @@ func TestPostShortenUrl(t *testing.T) {
 				return
 			}
 
-			id := strings.TrimPrefix(string(body), "http://localhost:8080/")
+			id := strings.TrimPrefix(string(body), testBaseURL+"/")
 			saved, ok := storage.Get(id)
 			require.True(t, ok)
 			assert.Equal(t, tt.body, saved)

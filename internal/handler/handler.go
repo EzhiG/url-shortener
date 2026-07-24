@@ -9,10 +9,11 @@ import (
 
 type Handler struct {
 	service *shortener.Service
+	baseURL string
 }
 
-func NewHandler(service *shortener.Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *shortener.Service, baseURL string) *Handler {
+	return &Handler{service: service, baseURL: baseURL}
 }
 
 func (h *Handler) GetShortenUrl(w http.ResponseWriter, r *http.Request) {
@@ -46,5 +47,5 @@ func (h *Handler) PostShortenUrl(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("http://localhost:8080/" + id))
+	w.Write([]byte(h.baseURL + "/" + id))
 }

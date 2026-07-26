@@ -1,11 +1,9 @@
 package repository
 
-type Storage interface {
-	Save(id, url string)
-	Get(id string) (string, bool)
-}
+import "sync"
 
 type MapStorage struct {
+	mu   sync.Mutex
 	data map[string]string
 }
 
@@ -13,11 +11,15 @@ func NewMapStorage() *MapStorage {
 	return &MapStorage{data: make(map[string]string)}
 }
 
-func (s *MapStorage) Save(id, url string) {
-	s.data[id] = url
+func (s *MapStorage) Save(id, val string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data[id] = val
 }
 
 func (s *MapStorage) Get(id string) (string, bool) {
-	url, ok := s.data[id]
-	return url, ok
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	val, ok := s.data[id]
+	return val, ok
 }

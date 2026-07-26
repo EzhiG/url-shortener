@@ -5,12 +5,15 @@ import (
 	"math/rand/v2"
 	"net/url"
 	"strings"
-
-	"github.com/EzhiG/url-shortener/internal/repository"
 )
 
 const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 const idLength = 8
+
+type UrlStorage interface {
+	Save(id, url string)
+	Get(id string) (string, bool)
+}
 
 func generateId() string {
 	var b strings.Builder
@@ -21,10 +24,10 @@ func generateId() string {
 }
 
 type Service struct {
-	storage repository.Storage
+	storage UrlStorage
 }
 
-func NewService(storage repository.Storage) *Service {
+func NewService(storage UrlStorage) *Service {
 	return &Service{storage: storage}
 }
 
@@ -41,6 +44,12 @@ func (s *Service) ShortenUrl(str string) (string, error) {
 	return id, nil
 }
 
-func (s *Service) ExpandUrl(id string) (string, bool) {
-	return s.storage.Get(id)
+func (s *Service) ExpandUrl(id string) (string, error) {
+	val, ok := s.storage.Get(id)
+
+	if !ok {
+		return "", errors.New("not found")
+	}
+
+	return val, nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/EzhiG/url-shortener/internal/config"
@@ -23,6 +24,6 @@ func main() {
 	err := http.ListenAndServe(cfg.Address, router)
 
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }

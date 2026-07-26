@@ -2,25 +2,30 @@ package handler
 
 import (
 	"io"
+	"log"
 	"net/http"
-
-	"github.com/EzhiG/url-shortener/internal/shortener"
+	"net/url"
 )
 
+type ShortenerService interface {
+	ShortenUrl(str string) (string, error)
+	ExpandUrl(id string) (string, error)
+}
+
 type Handler struct {
-	service *shortener.Service
+	service ShortenerService
 	baseURL string
 }
 
-func NewHandler(service *shortener.Service, baseURL string) *Handler {
+func NewHandler(service ShortenerService, baseURL string) *Handler {
 	return &Handler{service: service, baseURL: baseURL}
 }
 
 func (h *Handler) GetShortenUrl(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	expanded, ok := h.service.ExpandUrl(id)
+	expanded, err := h.service.ExpandUrl(id)
 
-	if !ok {
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -45,7 +50,18 @@ func (h *Handler) PostShortenUrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	shortenedUrl, err := url.JoinPath(h.baseURL + "/" + id)
+
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(h.baseURL + "/" + id))
+	_, err = w.Write([]byte(shortenedUrl))
+
+	if err != nil {
+		log.Println(err)
+	}
 }

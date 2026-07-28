@@ -10,29 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/EzhiG/url-shortener/internal/repository"
 	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
-type mockStorage struct {
-	data map[string]string
-}
-
-func newMockStorage() *mockStorage {
-	return &mockStorage{data: make(map[string]string)}
-}
-
-func (m *mockStorage) Save(id, url string) {
-	m.data[id] = url
-}
-
-func (m *mockStorage) Get(id string) (string, bool) {
-	url, ok := m.data[id]
-	return url, ok
-}
-
 const testBaseURL = "http://localhost:8080"
 
-func newTestHandler(storage *mockStorage) *Handler {
+func newTestHandler(storage *repository.MapStorage) *Handler {
 	svc := shortener.NewService(storage)
 	return NewHandler(svc, testBaseURL)
 }
@@ -64,7 +48,7 @@ func TestPostShortenUrl(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			storage := newMockStorage()
+			storage := repository.NewMapStorage()
 			h := newTestHandler(storage)
 
 			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
@@ -121,7 +105,7 @@ func TestGetShortenUrl(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			storage := newMockStorage()
+			storage := repository.NewMapStorage()
 
 			if tt.storedURL != "" {
 				storage.Save(tt.id, tt.storedURL)

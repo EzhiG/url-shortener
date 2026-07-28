@@ -1,6 +1,10 @@
 package repository
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/EzhiG/url-shortener/internal/errs"
+)
 
 type MapStorage struct {
 	mu   sync.Mutex
@@ -11,10 +15,15 @@ func NewMapStorage() *MapStorage {
 	return &MapStorage{data: make(map[string]string)}
 }
 
-func (s *MapStorage) Save(id, val string) {
+func (s *MapStorage) Save(id, val string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.data[id]; ok {
+		return errs.ErrIdCollision
+	}
+
 	s.data[id] = val
+	return nil
 }
 
 func (s *MapStorage) Get(id string) (string, bool) {

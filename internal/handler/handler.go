@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+
+	"github.com/EzhiG/url-shortener/internal/errs"
 )
 
 type ShortenerService interface {
@@ -45,12 +48,17 @@ func (h *Handler) PostShortenUrl(w http.ResponseWriter, r *http.Request) {
 
 	id, err := h.service.ShortenUrl(string(data))
 
+	if errors.Is(err, errs.ErrIdGenerationFailed) {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	shortenedUrl, err := url.JoinPath(h.baseURL + "/" + id)
+	shortenedUrl, err := url.JoinPath(h.baseURL, id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)

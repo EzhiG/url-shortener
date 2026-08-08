@@ -12,10 +12,10 @@ import (
 )
 
 func main() {
-	cfg := config.NewConfig()
+	cfg := config.New()
 	storage := repository.NewMapStorage()
-	service := shortener.NewService(storage)
-	h := handler.NewHandler(service, cfg.BaseURL)
+	service := shortener.New(storage)
+	h := handler.New(service, cfg.BaseURL)
 
 	router := chi.NewRouter()
 	router.Post("/", h.PostShortenUrl)

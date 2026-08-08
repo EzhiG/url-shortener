@@ -3,7 +3,7 @@ package repository
 import (
 	"sync"
 
-	"github.com/EzhiG/url-shortener/internal/errs"
+	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
 type MapStorage struct {
@@ -19,7 +19,7 @@ func (s *MapStorage) Save(id, val string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.data[id]; ok {
-		return errs.ErrIdCollision
+		return shortener.ErrIdCollision
 	}
 
 	s.data[id] = val

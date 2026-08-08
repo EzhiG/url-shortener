@@ -7,7 +7,7 @@ type Config struct {
 	BaseURL string
 }
 
-func NewConfig() *Config {
+func New() *Config {
 	cfg := new(Config)
 
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "http service address")

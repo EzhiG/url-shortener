@@ -17,8 +17,8 @@ import (
 const testBaseURL = "http://localhost:8080"
 
 func newTestHandler(storage *repository.MapStorage) *Handler {
-	svc := shortener.NewService(storage)
-	return NewHandler(svc, testBaseURL)
+	svc := shortener.New(storage)
+	return New(svc, testBaseURL)
 }
 
 type postWant struct {

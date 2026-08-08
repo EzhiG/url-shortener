@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/EzhiG/url-shortener/internal/errs"
+	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
 type ShortenerService interface {
@@ -16,17 +16,17 @@ type ShortenerService interface {
 }
 
 type Handler struct {
-	service ShortenerService
-	baseURL string
+	shortener ShortenerService
+	baseURL   string
 }
 
-func NewHandler(service ShortenerService, baseURL string) *Handler {
-	return &Handler{service: service, baseURL: baseURL}
+func New(shortenerService ShortenerService, baseURL string) *Handler {
+	return &Handler{shortener: shortenerService, baseURL: baseURL}
 }
 
 func (h *Handler) GetShortenUrl(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	expanded, err := h.service.ExpandUrl(id)
+	expanded, err := h.shortener.ExpandUrl(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -46,9 +46,9 @@ func (h *Handler) PostShortenUrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := h.service.ShortenUrl(string(data))
+	id, err := h.shortener.ShortenUrl(string(data))
 
-	if errors.Is(err, errs.ErrIdGenerationFailed) {
+	if errors.Is(err, shortener.ErrIdGenerationFailed) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

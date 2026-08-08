@@ -2,36 +2,28 @@ package shortener
 
 import (
 	"errors"
-	"math/rand/v2"
 	"net/url"
-
-	"github.com/EzhiG/url-shortener/internal/errs"
 )
 
-const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-const alphabetLen = len(alphabet)
-const idLength = 8
 const maxAttempts = 5
+
+var (
+	ErrIdCollision        = errors.New("id collision detected")
+	ErrIdGenerationFailed = errors.New("id generation failed")
+	ErrInvalidUrl         = errors.New("invalid url")
+	ErrUrlNotFound        = errors.New("url not found")
+)
 
 type UrlStorage interface {
 	Save(id, url string) error
 	Get(id string) (string, bool)
 }
 
-func generateId() string {
-	b := make([]byte, idLength)
-	for i := range idLength {
-		b[i] = alphabet[rand.IntN(alphabetLen)]
-	}
-
-	return string(b)
-}
-
 type Service struct {
 	storage UrlStorage
 }
 
-func NewService(storage UrlStorage) *Service {
+func New(storage UrlStorage) *Service {
 	return &Service{storage: storage}
 }
 
@@ -39,7 +31,7 @@ func (s *Service) ShortenUrl(str string) (string, error) {
 	parsed, err := url.Parse(str)
 
 	if (err != nil) || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return "", errs.ErrInvalidUrl
+		return "", ErrInvalidUrl
 	}
 
 	parsedUrl := parsed.String()
@@ -48,21 +40,21 @@ func (s *Service) ShortenUrl(str string) (string, error) {
 		id := generateId()
 		err := s.storage.Save(id, parsedUrl)
 
-		if errors.Is(err, errs.ErrIdCollision) {
+		if errors.Is(err, ErrIdCollision) {
 			continue
 		}
 
 		return id, err
 	}
 
-	return "", errs.ErrIdGenerationFailed
+	return "", ErrIdGenerationFailed
 }
 
 func (s *Service) ExpandUrl(id string) (string, error) {
 	val, ok := s.storage.Get(id)
 
 	if !ok {
-		return "", errs.ErrUrlNotFound
+		return "", ErrUrlNotFound
 	}
 
 	return val, nil

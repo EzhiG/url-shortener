@@ -15,6 +15,8 @@ type ShortenerService interface {
 	ExpandUrl(id string) (string, error)
 }
 
+type Middleware func(http.HandlerFunc) http.HandlerFunc
+
 type Handler struct {
 	shortener ShortenerService
 	baseURL   string

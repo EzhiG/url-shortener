@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/EzhiG/url-shortener/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -15,6 +17,7 @@ import (
 )
 
 const testBaseURL = "http://localhost:8080"
+const exampleURL = "https://example.com"
 
 func newTestHandler(storage *repository.MapStorage) *Handler {
 	svc := shortener.New(storage)
@@ -28,7 +31,7 @@ type postWant struct {
 	wantSaved   bool
 }
 
-func TestPostShortenUrl(t *testing.T) {
+func TestPlainPostShortenUrl(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
@@ -36,7 +39,7 @@ func TestPostShortenUrl(t *testing.T) {
 	}{
 		{
 			name: "valid url",
-			body: "https://example.com",
+			body: exampleURL,
 			want: postWant{contentType: "text/plain", status: http.StatusCreated, wantSaved: true},
 		},
 		{
@@ -54,7 +57,7 @@ func TestPostShortenUrl(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
 
-			h.PostShortenUrl(w, r)
+			h.PlainPostShortenUrl(w, r)
 
 			result := w.Result()
 			defer result.Body.Close()
@@ -77,6 +80,55 @@ func TestPostShortenUrl(t *testing.T) {
 	}
 }
 
+func TestApiPostShortenUrl(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want postWant
+	}{
+		{
+			name: "valid url",
+			body: `{"url":"` + exampleURL + `"}`,
+			want: postWant{contentType: "application/json", status: http.StatusCreated, wantSaved: true},
+		},
+		{
+			name: "invalid url",
+			body: `{"url":"ftp://example.com"}`,
+			want: postWant{contentType: "", status: http.StatusBadRequest, wantSaved: false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			storage := repository.NewMapStorage()
+			h := newTestHandler(storage)
+
+			r := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
+			w := httptest.NewRecorder()
+
+			h.ApiPostShortenUrl(w, r)
+
+			result := w.Result()
+			defer result.Body.Close()
+
+			require.Equal(t, tt.want.status, result.StatusCode)
+			require.Equal(t, tt.want.contentType, result.Header.Get("Content-Type"))
+
+			if !tt.want.wantSaved {
+				return
+			}
+
+			var res model.Response
+			require.NoError(t, json.NewDecoder(result.Body).Decode(&res))
+
+			id := strings.TrimPrefix(res.Result, testBaseURL+"/")
+			saved, ok := storage.Get(id)
+			require.True(t, ok)
+			assert.Equal(t, exampleURL, saved)
+		})
+	}
+}
+
 type getWant struct {
 	status   int
 	location string
@@ -92,8 +144,8 @@ func TestGetShortenUrl(t *testing.T) {
 		{
 			name:      "existing id",
 			id:        "abc123",
-			storedURL: "https://example.com",
-			want:      getWant{status: http.StatusTemporaryRedirect, location: "https://example.com"},
+			storedURL: exampleURL,
+			want:      getWant{status: http.StatusTemporaryRedirect, location: exampleURL},
 		},
 		{
 			name:      "unknown id",

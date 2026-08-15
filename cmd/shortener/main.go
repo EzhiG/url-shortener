@@ -26,7 +26,8 @@ func main() {
 
 	router := chi.NewRouter()
 	router.Use(mw)
-	router.Post("/", h.PostShortenUrl)
+	router.Post("/", h.PlainPostShortenUrl)
+	router.Post("/api/shorten", h.ApiPostShortenUrl)
 	router.Get("/{id}", h.GetShortenUrl)
 
 	err = http.ListenAndServe(cfg.Address, router)

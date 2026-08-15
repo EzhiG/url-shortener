@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 
+	"github.com/EzhiG/url-shortener/internal/model"
 	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
@@ -26,6 +28,17 @@ func New(shortenerService ShortenerService, baseURL string) *Handler {
 	return &Handler{shortener: shortenerService, baseURL: baseURL}
 }
 
+func (h *Handler) shortenWithBaseUrl(originUrl string) (string, error) {
+	id, err := h.shortener.ShortenUrl(originUrl)
+
+	if err != nil {
+		return "", err
+	}
+
+	shortenedUrl, err := url.JoinPath(h.baseURL, id)
+	return shortenedUrl, err
+}
+
 func (h *Handler) GetShortenUrl(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	expanded, err := h.shortener.ExpandUrl(id)
@@ -39,7 +52,7 @@ func (h *Handler) GetShortenUrl(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func (h *Handler) PostShortenUrl(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) PlainPostShortenUrl(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
 
@@ -48,7 +61,7 @@ func (h *Handler) PostShortenUrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := h.shortener.ShortenUrl(string(data))
+	shortenedUrl, err := h.shortenWithBaseUrl(string(data))
 
 	if errors.Is(err, shortener.ErrIdGenerationFailed) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -60,16 +73,40 @@ func (h *Handler) PostShortenUrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortenedUrl, err := url.JoinPath(h.baseURL, id)
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusCreated)
+	_, err = w.Write([]byte(shortenedUrl))
+
+	if err != nil {
+		log.Println(err)
+	}
+}
+
+func (h *Handler) ApiPostShortenUrl(w http.ResponseWriter, r *http.Request) {
+	var req model.Request
+	defer r.Body.Close()
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	shortenedUrl, err := h.shortenWithBaseUrl(req.Url)
+
+	if errors.Is(err, shortener.ErrIdGenerationFailed) {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
+	resp := model.Response{Result: shortenedUrl}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_, err = w.Write([]byte(shortenedUrl))
+	err = json.NewEncoder(w).Encode(&resp)
 
 	if err != nil {
 		log.Println(err)

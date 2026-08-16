@@ -25,7 +25,7 @@ func main() {
 	mw := logger.NewMiddleware(sugar)
 
 	router := chi.NewRouter()
-	router.Use(mw)
+	router.Use(mw, handler.GzipMiddleware)
 	router.Post("/", h.PlainPostShortenUrl)
 	router.Post("/api/shorten", h.ApiPostShortenUrl)
 	router.Get("/{id}", h.GetShortenUrl)

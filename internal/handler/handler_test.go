@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -175,6 +177,128 @@ func TestGetShortenUrl(t *testing.T) {
 
 			require.Equal(t, tt.want.status, result.StatusCode)
 			assert.Equal(t, tt.want.location, result.Header.Get("Location"))
+		})
+	}
+}
+
+func TestGzipMiddleware(t *testing.T) {
+	requestBody := `{"url":"` + exampleURL + `"}`
+	responseBody := `{"result":"` + testBaseURL + `/xyz"}`
+	const responseContentType = "application/json"
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.Equal(t, requestBody, string(body))
+
+		w.Header().Set("Content-Type", responseContentType)
+		w.WriteHeader(http.StatusCreated)
+		_, err = w.Write([]byte(responseBody))
+		require.NoError(t, err)
+	})
+
+	srv := httptest.NewServer(GzipMiddleware(handler))
+	defer srv.Close()
+
+	tests := []struct {
+		name               string
+		requestContentType string
+		gzipRequest        bool
+		acceptGzip         bool
+		wantGzipResponse   bool
+	}{
+		{
+			name:               "plain request, plain response",
+			requestContentType: "application/json",
+			gzipRequest:        false,
+			acceptGzip:         false,
+			wantGzipResponse:   false,
+		},
+		{
+			name:               "gzip request body is decompressed",
+			requestContentType: "application/json",
+			gzipRequest:        true,
+			acceptGzip:         false,
+			wantGzipResponse:   false,
+		},
+		{
+			name:               "json content type gets compressed response",
+			requestContentType: "application/json",
+			gzipRequest:        false,
+			acceptGzip:         true,
+			wantGzipResponse:   true,
+		},
+		{
+			name:               "html content type gets compressed response",
+			requestContentType: "text/html",
+			gzipRequest:        false,
+			acceptGzip:         true,
+			wantGzipResponse:   true,
+		},
+		{
+			name:               "both gzip request and gzip response",
+			requestContentType: "application/json",
+			gzipRequest:        true,
+			acceptGzip:         true,
+			wantGzipResponse:   true,
+		},
+		{
+			name:               "unsupported content type isn't compressed",
+			requestContentType: "text/plain",
+			gzipRequest:        false,
+			acceptGzip:         true,
+			wantGzipResponse:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body io.Reader
+			if tt.gzipRequest {
+				buf := bytes.NewBuffer(nil)
+				zb := gzip.NewWriter(buf)
+				_, err := zb.Write([]byte(requestBody))
+				require.NoError(t, err)
+				require.NoError(t, zb.Close())
+				body = buf
+			} else {
+				body = strings.NewReader(requestBody)
+			}
+
+			r := httptest.NewRequest(http.MethodPost, srv.URL, body)
+			r.RequestURI = ""
+			r.Header.Set("Content-Type", tt.requestContentType)
+
+			if tt.gzipRequest {
+				r.Header.Set("Content-Encoding", "gzip")
+			}
+			if tt.acceptGzip {
+				r.Header.Set("Accept-Encoding", "gzip")
+			}
+
+			resp, err := http.DefaultClient.Do(r)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+			require.Equal(t, responseContentType, resp.Header.Get("Content-Type"))
+
+			if tt.wantGzipResponse {
+				require.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
+			} else {
+				require.Empty(t, resp.Header.Get("Content-Encoding"))
+			}
+
+			reader := resp.Body
+			if tt.wantGzipResponse {
+				zr, err := gzip.NewReader(resp.Body)
+				require.NoError(t, err)
+				reader = zr
+			}
+
+			b, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			require.JSONEq(t, responseBody, string(b))
 		})
 	}
 }

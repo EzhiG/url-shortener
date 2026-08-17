@@ -19,7 +19,11 @@ func main() {
 	}
 	defer sugar.Sync()
 	cfg := config.New()
-	storage := repository.NewMapStorage()
+	storage, err := repository.NewFileStorage(cfg.FileStoragePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer storage.CloseFile()
 	service := shortener.New(storage)
 	h := handler.New(service, cfg.BaseURL)
 	mw := logger.NewMiddleware(sugar)

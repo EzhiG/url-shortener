@@ -12,13 +12,13 @@ type FileStorage struct {
 	mapStorage *MapStorage
 	file       *os.File
 	fileMu     sync.Mutex
-	nextId     int
+	nextID     int
 }
 
 type StorageRecord struct {
-	Uuid        string `json:"uuid"`
-	ShortUrl    string `json:"short_url"`
-	OriginalUrl string `json:"original_url"`
+	UUID        string `json:"uuid"`
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
 }
 
 func NewFileStorage(fname string) (*FileStorage, error) {
@@ -45,8 +45,8 @@ func (s *FileStorage) restore() error {
 			return err
 		}
 
-		s.mapStorage.data[record.ShortUrl] = record.OriginalUrl
-		s.nextId++
+		s.mapStorage.set(record.ShortURL, record.OriginalURL)
+		s.nextID++
 	}
 
 	return nil
@@ -59,8 +59,8 @@ func (s *FileStorage) Save(id, url string) error {
 
 	s.fileMu.Lock()
 	defer s.fileMu.Unlock()
-	s.nextId++
-	record := StorageRecord{Uuid: strconv.Itoa(s.nextId), ShortUrl: id, OriginalUrl: url}
+	s.nextID++
+	record := StorageRecord{UUID: strconv.Itoa(s.nextID), ShortURL: id, OriginalURL: url}
 	data, err := json.Marshal(record)
 	if err != nil {
 		return err

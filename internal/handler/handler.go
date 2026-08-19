@@ -4,17 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 
 	"github.com/EzhiG/url-shortener/internal/model"
 	"github.com/EzhiG/url-shortener/internal/shortener"
+	"go.uber.org/zap"
 )
 
 type ShortenerService interface {
-	ShortenUrl(str string) (string, error)
-	ExpandUrl(id string) (string, error)
+	ShortenURL(str string) (string, error)
+	ExpandURL(id string) (string, error)
 }
 
 type Middleware func(http.HandlerFunc) http.HandlerFunc
@@ -22,26 +22,27 @@ type Middleware func(http.HandlerFunc) http.HandlerFunc
 type Handler struct {
 	shortener ShortenerService
 	baseURL   string
+	logger    *zap.SugaredLogger
 }
 
-func New(shortenerService ShortenerService, baseURL string) *Handler {
-	return &Handler{shortener: shortenerService, baseURL: baseURL}
+func New(shortenerService ShortenerService, baseURL string, logger *zap.SugaredLogger) *Handler {
+	return &Handler{shortener: shortenerService, baseURL: baseURL, logger: logger}
 }
 
-func (h *Handler) shortenWithBaseUrl(originUrl string) (string, error) {
-	id, err := h.shortener.ShortenUrl(originUrl)
+func (h *Handler) shortenWithBaseURL(originURL string) (string, error) {
+	id, err := h.shortener.ShortenURL(originURL)
 
 	if err != nil {
 		return "", err
 	}
 
-	shortenedUrl, err := url.JoinPath(h.baseURL, id)
-	return shortenedUrl, err
+	shortenedURL, err := url.JoinPath(h.baseURL, id)
+	return shortenedURL, err
 }
 
-func (h *Handler) GetShortenUrl(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetShortenURL(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	expanded, err := h.shortener.ExpandUrl(id)
+	expanded, err := h.shortener.ExpandURL(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -52,7 +53,7 @@ func (h *Handler) GetShortenUrl(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func (h *Handler) PlainPostShortenUrl(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) PlainPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
 
@@ -61,9 +62,9 @@ func (h *Handler) PlainPostShortenUrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortenedUrl, err := h.shortenWithBaseUrl(string(data))
+	shortenedURL, err := h.shortenWithBaseURL(string(data))
 
-	if errors.Is(err, shortener.ErrIdGenerationFailed) {
+	if errors.Is(err, shortener.ErrIDGenerationFailed) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -75,14 +76,14 @@ func (h *Handler) PlainPostShortenUrl(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	_, err = w.Write([]byte(shortenedUrl))
+	_, err = w.Write([]byte(shortenedURL))
 
 	if err != nil {
-		log.Println(err)
+		h.logger.Error(err.Error())
 	}
 }
 
-func (h *Handler) ApiPostShortenUrl(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	var req model.Request
 	defer r.Body.Close()
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -91,9 +92,9 @@ func (h *Handler) ApiPostShortenUrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortenedUrl, err := h.shortenWithBaseUrl(req.Url)
+	shortenedURL, err := h.shortenWithBaseURL(req.URL)
 
-	if errors.Is(err, shortener.ErrIdGenerationFailed) {
+	if errors.Is(err, shortener.ErrIDGenerationFailed) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -103,12 +104,12 @@ func (h *Handler) ApiPostShortenUrl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := model.Response{Result: shortenedUrl}
+	resp := model.Response{Result: shortenedURL}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	err = json.NewEncoder(w).Encode(&resp)
 
 	if err != nil {
-		log.Println(err)
+		h.logger.Error(err.Error())
 	}
 }

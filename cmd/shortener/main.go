@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/EzhiG/url-shortener/internal/config"
@@ -15,28 +14,28 @@ import (
 func main() {
 	sugar, err := logger.New()
 	if err != nil {
-		log.Fatal(err)
+		sugar.Fatal(err)
 	}
 	defer sugar.Sync()
 	cfg := config.New()
 	storage, err := repository.NewFileStorage(cfg.FileStoragePath)
 	if err != nil {
-		log.Fatal(err)
+		sugar.Fatal(err)
 	}
 	defer storage.CloseFile()
 	service := shortener.New(storage)
-	h := handler.New(service, cfg.BaseURL)
+	h := handler.New(service, cfg.BaseURL, sugar)
 	mw := logger.NewMiddleware(sugar)
 
 	router := chi.NewRouter()
-	router.Use(mw, handler.GzipMiddleware)
-	router.Post("/", h.PlainPostShortenUrl)
-	router.Post("/api/shorten", h.ApiPostShortenUrl)
-	router.Get("/{id}", h.GetShortenUrl)
+	router.Use(mw, handler.MaxBytesMiddleware, handler.GzipMiddleware)
+	router.Post("/", h.PlainPostShortenURL)
+	router.Post("/api/shorten", h.ApiPostShortenURL)
+	router.Get("/{id}", h.GetShortenURL)
 
 	err = http.ListenAndServe(cfg.Address, router)
 
 	if err != nil {
-		log.Fatal(err)
+		sugar.Fatal(err)
 	}
 }

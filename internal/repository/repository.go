@@ -19,7 +19,7 @@ func (s *MapStorage) Save(id, val string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.data[id]; ok {
-		return shortener.ErrIdCollision
+		return shortener.ErrIDCollision
 	}
 
 	s.data[id] = val
@@ -31,4 +31,8 @@ func (s *MapStorage) Get(id string) (string, bool) {
 	defer s.mu.Unlock()
 	val, ok := s.data[id]
 	return val, ok
+}
+
+func (s *MapStorage) set(id, val string) {
+	s.data[id] = val
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/EzhiG/url-shortener/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/EzhiG/url-shortener/internal/repository"
 	"github.com/EzhiG/url-shortener/internal/shortener"
@@ -23,7 +24,8 @@ const exampleURL = "https://example.com"
 
 func newTestHandler(storage *repository.MapStorage) *Handler {
 	svc := shortener.New(storage)
-	return New(svc, testBaseURL)
+	logger := zap.NewNop().Sugar()
+	return New(svc, testBaseURL, logger)
 }
 
 type postWant struct {
@@ -33,7 +35,7 @@ type postWant struct {
 	wantSaved   bool
 }
 
-func TestPlainPostShortenUrl(t *testing.T) {
+func TestPlainPostShortenURL(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
@@ -59,7 +61,7 @@ func TestPlainPostShortenUrl(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
 
-			h.PlainPostShortenUrl(w, r)
+			h.PlainPostShortenURL(w, r)
 
 			result := w.Result()
 			defer result.Body.Close()
@@ -82,7 +84,7 @@ func TestPlainPostShortenUrl(t *testing.T) {
 	}
 }
 
-func TestApiPostShortenUrl(t *testing.T) {
+func TestApiPostShortenURL(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
@@ -108,7 +110,7 @@ func TestApiPostShortenUrl(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
 
-			h.ApiPostShortenUrl(w, r)
+			h.ApiPostShortenURL(w, r)
 
 			result := w.Result()
 			defer result.Body.Close()
@@ -136,7 +138,7 @@ type getWant struct {
 	location string
 }
 
-func TestGetShortenUrl(t *testing.T) {
+func TestGetShortenURL(t *testing.T) {
 	tests := []struct {
 		name      string
 		id        string
@@ -151,7 +153,7 @@ func TestGetShortenUrl(t *testing.T) {
 		},
 		{
 			name:      "unknown id",
-			id:        "unknownId",
+			id:        "unknownID",
 			storedURL: "",
 			want:      getWant{status: http.StatusBadRequest, location: ""},
 		},
@@ -170,7 +172,7 @@ func TestGetShortenUrl(t *testing.T) {
 			request.SetPathValue("id", tt.id)
 			w := httptest.NewRecorder()
 
-			h.GetShortenUrl(w, request)
+			h.GetShortenURL(w, request)
 
 			result := w.Result()
 			defer result.Body.Close()
@@ -184,75 +186,78 @@ func TestGetShortenUrl(t *testing.T) {
 func TestGzipMiddleware(t *testing.T) {
 	requestBody := `{"url":"` + exampleURL + `"}`
 	responseBody := `{"result":"` + testBaseURL + `/xyz"}`
-	const responseContentType = "application/json"
+	createServer := func(responseContentType string) *httptest.Server {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.Equal(t, requestBody, string(body))
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		require.Equal(t, requestBody, string(body))
+			w.Header().Set("Content-Type", responseContentType)
+			w.WriteHeader(http.StatusCreated)
+			_, err = w.Write([]byte(responseBody))
+			require.NoError(t, err)
+		})
 
-		w.Header().Set("Content-Type", responseContentType)
-		w.WriteHeader(http.StatusCreated)
-		_, err = w.Write([]byte(responseBody))
-		require.NoError(t, err)
-	})
-
-	srv := httptest.NewServer(GzipMiddleware(handler))
-	defer srv.Close()
+		srv := httptest.NewServer(GzipMiddleware(handler))
+		return srv
+	}
 
 	tests := []struct {
-		name               string
-		requestContentType string
-		gzipRequest        bool
-		acceptGzip         bool
-		wantGzipResponse   bool
+		name                string
+		responseContentType string
+		gzipRequest         bool
+		acceptGzip          bool
+		wantGzipResponse    bool
 	}{
 		{
-			name:               "plain request, plain response",
-			requestContentType: "application/json",
-			gzipRequest:        false,
-			acceptGzip:         false,
-			wantGzipResponse:   false,
+			name:                "plain request, plain response",
+			responseContentType: "application/json",
+			gzipRequest:         false,
+			acceptGzip:          false,
+			wantGzipResponse:    false,
 		},
 		{
-			name:               "gzip request body is decompressed",
-			requestContentType: "application/json",
-			gzipRequest:        true,
-			acceptGzip:         false,
-			wantGzipResponse:   false,
+			name:                "gzip request body is decompressed",
+			responseContentType: "application/json",
+			gzipRequest:         true,
+			acceptGzip:          false,
+			wantGzipResponse:    false,
 		},
 		{
-			name:               "json content type gets compressed response",
-			requestContentType: "application/json",
-			gzipRequest:        false,
-			acceptGzip:         true,
-			wantGzipResponse:   true,
+			name:                "json content type gets compressed response",
+			responseContentType: "application/json",
+			gzipRequest:         false,
+			acceptGzip:          true,
+			wantGzipResponse:    true,
 		},
 		{
-			name:               "html content type gets compressed response",
-			requestContentType: "text/html",
-			gzipRequest:        false,
-			acceptGzip:         true,
-			wantGzipResponse:   true,
+			name:                "html content type gets compressed response",
+			responseContentType: "text/html",
+			gzipRequest:         false,
+			acceptGzip:          true,
+			wantGzipResponse:    true,
 		},
 		{
-			name:               "both gzip request and gzip response",
-			requestContentType: "application/json",
-			gzipRequest:        true,
-			acceptGzip:         true,
-			wantGzipResponse:   true,
+			name:                "both gzip request and gzip response",
+			responseContentType: "application/json",
+			gzipRequest:         true,
+			acceptGzip:          true,
+			wantGzipResponse:    true,
 		},
 		{
-			name:               "unsupported content type isn't compressed",
-			requestContentType: "text/plain",
-			gzipRequest:        false,
-			acceptGzip:         true,
-			wantGzipResponse:   false,
+			name:                "unsupported content type isn't compressed",
+			responseContentType: "text/plain",
+			gzipRequest:         false,
+			acceptGzip:          true,
+			wantGzipResponse:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			srv := createServer(tt.responseContentType)
+			defer srv.Close()
+
 			var body io.Reader
 			if tt.gzipRequest {
 				buf := bytes.NewBuffer(nil)
@@ -267,7 +272,6 @@ func TestGzipMiddleware(t *testing.T) {
 
 			r := httptest.NewRequest(http.MethodPost, srv.URL, body)
 			r.RequestURI = ""
-			r.Header.Set("Content-Type", tt.requestContentType)
 
 			if tt.gzipRequest {
 				r.Header.Set("Content-Encoding", "gzip")
@@ -281,7 +285,7 @@ func TestGzipMiddleware(t *testing.T) {
 			defer resp.Body.Close()
 
 			require.Equal(t, http.StatusCreated, resp.StatusCode)
-			require.Equal(t, responseContentType, resp.Header.Get("Content-Type"))
+			require.Equal(t, tt.responseContentType, resp.Header.Get("Content-Type"))
 
 			if tt.wantGzipResponse {
 				require.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))

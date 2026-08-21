@@ -8,53 +8,53 @@ import (
 const maxAttempts = 5
 
 var (
-	ErrIdCollision        = errors.New("id collision detected")
-	ErrIdGenerationFailed = errors.New("id generation failed")
-	ErrInvalidUrl         = errors.New("invalid url")
-	ErrUrlNotFound        = errors.New("url not found")
+	ErrIDCollision        = errors.New("id collision detected")
+	ErrIDGenerationFailed = errors.New("id generation failed")
+	ErrInvalidURL         = errors.New("invalid url")
+	ErrURLNotFound        = errors.New("url not found")
 )
 
-type UrlStorage interface {
+type URLStorage interface {
 	Save(id, url string) error
 	Get(id string) (string, bool)
 }
 
 type Service struct {
-	storage UrlStorage
+	storage URLStorage
 }
 
-func New(storage UrlStorage) *Service {
+func New(storage URLStorage) *Service {
 	return &Service{storage: storage}
 }
 
-func (s *Service) ShortenUrl(str string) (string, error) {
+func (s *Service) ShortenURL(str string) (string, error) {
 	parsed, err := url.Parse(str)
 
 	if (err != nil) || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return "", ErrInvalidUrl
+		return "", ErrInvalidURL
 	}
 
-	parsedUrl := parsed.String()
+	parsedURL := parsed.String()
 
 	for range maxAttempts {
-		id := generateId()
-		err := s.storage.Save(id, parsedUrl)
+		id := generateID()
+		err := s.storage.Save(id, parsedURL)
 
-		if errors.Is(err, ErrIdCollision) {
+		if errors.Is(err, ErrIDCollision) {
 			continue
 		}
 
 		return id, err
 	}
 
-	return "", ErrIdGenerationFailed
+	return "", ErrIDGenerationFailed
 }
 
-func (s *Service) ExpandUrl(id string) (string, error) {
+func (s *Service) ExpandURL(id string) (string, error) {
 	val, ok := s.storage.Get(id)
 
 	if !ok {
-		return "", ErrUrlNotFound
+		return "", ErrURLNotFound
 	}
 
 	return val, nil

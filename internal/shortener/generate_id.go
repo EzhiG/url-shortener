@@ -6,7 +6,7 @@ const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789
 const alphabetLen = len(alphabet)
 const idLength = 8
 
-func generateId() string {
+func generateID() string {
 	b := make([]byte, idLength)
 	for i := range idLength {
 		b[i] = alphabet[rand.IntN(alphabetLen)]

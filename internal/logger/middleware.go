@@ -34,7 +34,7 @@ func NewMiddleware(sugar *zap.SugaredLogger) func(http.Handler) http.Handler {
 		loggedHandler := func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			rd := &responseData{
-				status: 0,
+				status: http.StatusOK,
 				size:   0,
 			}
 			lw := &logResponseWriter{

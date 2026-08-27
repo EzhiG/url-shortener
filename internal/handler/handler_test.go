@@ -25,7 +25,7 @@ const exampleURL = "https://example.com"
 func newTestHandler(storage *repository.MapStorage) *Handler {
 	svc := shortener.New(storage)
 	logger := zap.NewNop().Sugar()
-	return New(svc, testBaseURL, logger)
+	return New(svc, testBaseURL, nil, logger)
 }
 
 type postWant struct {

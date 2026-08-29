@@ -6,9 +6,29 @@ import (
 	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
+type StorageRecord struct {
+	UUID        string `json:"uuid"`
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
+type Storage interface {
+	Save(id, url string) error
+	Get(id string) (string, bool)
+	Check() error
+	Close() error
+}
 type MapStorage struct {
 	mu   sync.Mutex
 	data map[string]string
+}
+
+func (s *MapStorage) Close() error {
+	return nil
+}
+
+func (s *MapStorage) Check() error {
+	return nil
 }
 
 func NewMapStorage() *MapStorage {

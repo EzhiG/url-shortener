@@ -20,19 +20,14 @@ func main() {
 	defer sugar.Sync()
 	cfg := config.New()
 
-	database, err := db.NewPostgres(cfg.DatabaseDSN)
+	storage, err := createAppStorage(cfg)
 	if err != nil {
 		sugar.Fatal(err)
 	}
-	defer database.Close()
+	defer storage.Close()
 
-	storage, err := repository.NewFileStorage(cfg.FileStoragePath)
-	if err != nil {
-		sugar.Fatal(err)
-	}
-	defer storage.CloseFile()
 	service := shortener.New(storage)
-	h := handler.New(service, cfg.BaseURL, database, sugar)
+	h := handler.New(service, cfg.BaseURL, sugar)
 	mw := logger.NewMiddleware(sugar)
 
 	router := chi.NewRouter()
@@ -47,4 +42,20 @@ func main() {
 	if err != nil {
 		sugar.Fatal(err)
 	}
+}
+
+func createAppStorage(cfg *config.Config) (repository.Storage, error) {
+	if cfg.DatabaseDSN != "" {
+		database, err := db.NewPostgres(cfg.DatabaseDSN)
+		if err != nil {
+			return nil, err
+		}
+		return repository.NewDBStorage(database), nil
+	}
+	if cfg.FileStoragePath != "" {
+		storage, err := repository.NewFileStorage(cfg.FileStoragePath)
+		return storage, err
+	}
+
+	return repository.NewMapStorage(), nil
 }

@@ -15,10 +15,12 @@ type FileStorage struct {
 	nextID     int
 }
 
-type StorageRecord struct {
-	UUID        string `json:"uuid"`
-	ShortURL    string `json:"short_url"`
-	OriginalURL string `json:"original_url"`
+func (s *FileStorage) Close() error {
+	return s.file.Close()
+}
+
+func (s *FileStorage) Check() error {
+	return nil
 }
 
 func NewFileStorage(fname string) (*FileStorage, error) {

@@ -17,6 +17,7 @@ var (
 type URLStorage interface {
 	Save(id, url string) error
 	Get(id string) (string, bool)
+	Check() error
 }
 
 type Service struct {
@@ -58,4 +59,8 @@ func (s *Service) ExpandURL(id string) (string, error) {
 	}
 
 	return val, nil
+}
+
+func (s *Service) Ping() error {
+	return s.storage.Check()
 }

@@ -1,14 +1,11 @@
 package handler
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/EzhiG/url-shortener/internal/model"
 	"github.com/EzhiG/url-shortener/internal/shortener"
@@ -18,6 +15,7 @@ import (
 type ShortenerService interface {
 	ShortenURL(str string) (string, error)
 	ExpandURL(id string) (string, error)
+	Ping() error
 }
 
 type Middleware func(http.HandlerFunc) http.HandlerFunc
@@ -25,12 +23,11 @@ type Middleware func(http.HandlerFunc) http.HandlerFunc
 type Handler struct {
 	shortener ShortenerService
 	baseURL   string
-	db        *sql.DB
 	logger    *zap.SugaredLogger
 }
 
-func New(shortenerService ShortenerService, baseURL string, db *sql.DB, logger *zap.SugaredLogger) *Handler {
-	return &Handler{shortener: shortenerService, baseURL: baseURL, db: db, logger: logger}
+func New(shortenerService ShortenerService, baseURL string, logger *zap.SugaredLogger) *Handler {
+	return &Handler{shortener: shortenerService, baseURL: baseURL, logger: logger}
 }
 
 func (h *Handler) shortenWithBaseURL(originURL string) (string, error) {
@@ -119,10 +116,7 @@ func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Ping(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	if err := h.db.PingContext(ctx); err != nil {
+	if err := h.shortener.Ping(); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

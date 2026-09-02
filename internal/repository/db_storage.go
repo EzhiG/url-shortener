@@ -45,6 +45,37 @@ func (s *DBStorage) Save(id, url string) error {
 	return nil
 }
 
+func (s *DBStorage) SaveMany(records map[string]string) error {
+	tx, err := s.db.Begin()
+
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	ctx := context.Background()
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO urls (short, original) VALUES($1, $2)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for id, url := range records {
+		_, err := stmt.ExecContext(ctx, id, url)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == PGUniqueViolationErrorCode {
+				return shortener.ErrIDCollision
+			}
+
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func (s *DBStorage) Get(id string) (string, bool) {
 	var url string
 	err := s.db.QueryRowContext(context.Background(), "SELECT original FROM urls WHERE short = $1", id).Scan(&url)

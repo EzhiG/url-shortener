@@ -34,6 +34,7 @@ func main() {
 	router.Use(mw, handler.MaxBytesMiddleware, handler.GzipMiddleware)
 	router.Post("/", h.PlainPostShortenURL)
 	router.Post("/api/shorten", h.ApiPostShortenURL)
+	router.Post("/api/shorten/batch", h.ApiPostBatchShortenURL)
 	router.Get("/{id}", h.GetShortenURL)
 	router.Get("/ping", h.Ping)
 

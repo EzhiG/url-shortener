@@ -14,6 +14,7 @@ type StorageRecord struct {
 
 type Storage interface {
 	Save(id, url string) error
+	SaveMany(records map[string]string) error
 	Get(id string) (string, bool)
 	Check() error
 	Close() error
@@ -46,6 +47,22 @@ func (s *MapStorage) Save(id, val string) error {
 	return nil
 }
 
+func (s *MapStorage) SaveMany(records map[string]string) error {
+	for id, url := range records {
+		if err := s.Save(id, url); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *MapStorage) removeMany(ids []string) {
+	for _, id := range ids {
+		s.remove(id)
+	}
+}
+
 func (s *MapStorage) Get(id string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -55,4 +72,8 @@ func (s *MapStorage) Get(id string) (string, bool) {
 
 func (s *MapStorage) set(id, val string) {
 	s.data[id] = val
+}
+
+func (s *MapStorage) remove(id string) {
+	delete(s.data, id)
 }

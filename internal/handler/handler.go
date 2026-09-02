@@ -13,7 +13,8 @@ import (
 )
 
 type ShortenerService interface {
-	ShortenURL(str string) (string, error)
+	ShortenURL(original string) (string, error)
+	ShortenManyURLs(original []string) (map[string]string, error)
 	ExpandURL(id string) (string, error)
 	Ping() error
 }
@@ -106,6 +107,58 @@ func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := model.Response{Result: shortenedURL}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	err = json.NewEncoder(w).Encode(&resp)
+
+	if err != nil {
+		h.logger.Error(err.Error())
+	}
+}
+
+func (h *Handler) ApiPostBatchShortenURL(w http.ResponseWriter, r *http.Request) {
+	var req model.BatchRequest
+	defer r.Body.Close()
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	urls := make([]string, 0, len(req))
+	for _, r := range req {
+		urls = append(urls, r.OriginalURL)
+	}
+
+	records, err := h.shortener.ShortenManyURLs(urls)
+
+	if err != nil {
+		if errors.Is(err, shortener.ErrIDGenerationFailed) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	resp := model.BatchResponse{}
+
+	for _, r := range req {
+		shortURL, ok := records[r.OriginalURL]
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		shortURL, err = url.JoinPath(h.baseURL, shortURL)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		resp = append(resp, model.BatchResponseItem{CorrelationID: r.CorrelationID, ShortURL: shortURL})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	err = json.NewEncoder(w).Encode(&resp)

@@ -97,7 +97,7 @@ func (h *Handler) PlainPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) APIPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	var req model.Request
 	defer r.Body.Close()
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -133,7 +133,7 @@ func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) ApiPostBatchShortenURL(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) APIPostBatchShortenURL(w http.ResponseWriter, r *http.Request) {
 	var req model.BatchRequest
 	defer r.Body.Close()
 	err := json.NewDecoder(r.Body).Decode(&req)

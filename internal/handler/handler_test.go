@@ -84,7 +84,7 @@ func TestPlainPostShortenURL(t *testing.T) {
 	}
 }
 
-func TestApiPostShortenURL(t *testing.T) {
+func TestAPIPostShortenURL(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
@@ -110,7 +110,7 @@ func TestApiPostShortenURL(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
 
-			h.ApiPostShortenURL(w, r)
+			h.APIPostShortenURL(w, r)
 
 			result := w.Result()
 			defer result.Body.Close()

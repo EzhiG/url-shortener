@@ -33,8 +33,8 @@ func main() {
 	router := chi.NewRouter()
 	router.Use(mw, handler.MaxBytesMiddleware, handler.GzipMiddleware)
 	router.Post("/", h.PlainPostShortenURL)
-	router.Post("/api/shorten", h.ApiPostShortenURL)
-	router.Post("/api/shorten/batch", h.ApiPostBatchShortenURL)
+	router.Post("/api/shorten", h.APIPostShortenURL)
+	router.Post("/api/shorten/batch", h.APIPostBatchShortenURL)
 	router.Get("/{id}", h.GetShortenURL)
 	router.Get("/ping", h.Ping)
 

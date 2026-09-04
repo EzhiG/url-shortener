@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/EzhiG/url-shortener/internal/shortener"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 )
-
-const PGUniqueViolationErrorCode = "23505"
 
 type DBStorage struct {
 	db *sql.DB
@@ -32,17 +31,28 @@ func NewDBStorage(db *sql.DB) *DBStorage {
 }
 
 func (s *DBStorage) Save(id, url string) error {
-	_, err := s.db.ExecContext(context.Background(), "INSERT INTO urls (short, original) VALUES ($1, $2)", id, url)
+	res, err := s.db.ExecContext(context.Background(), "INSERT INTO urls (short, original) VALUES ($1, $2) ON CONFLICT (original) DO NOTHING", id, url)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == PGUniqueViolationErrorCode {
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
 			return shortener.ErrIDCollision
 		}
 
 		return err
 	}
+	rows, _ := res.RowsAffected()
 
-	return nil
+	if rows > 0 {
+		return nil
+	}
+
+	existedID, ok := s.getByOriginal(url)
+
+	if !ok {
+		return shortener.ErrURLNotFound
+	}
+
+	return shortener.NewURLConflictError(existedID)
 }
 
 func (s *DBStorage) SaveMany(records map[string]string) error {
@@ -65,7 +75,7 @@ func (s *DBStorage) SaveMany(records map[string]string) error {
 		_, err := stmt.ExecContext(ctx, id, url)
 		if err != nil {
 			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == PGUniqueViolationErrorCode {
+			if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
 				return shortener.ErrIDCollision
 			}
 
@@ -84,4 +94,14 @@ func (s *DBStorage) Get(id string) (string, bool) {
 	}
 
 	return url, true
+}
+
+func (s *DBStorage) getByOriginal(original string) (string, bool) {
+	var id string
+	err := s.db.QueryRowContext(context.Background(), "SELECT short FROM urls WHERE original = $1", original).Scan(&id)
+	if err != nil {
+		return "", false
+	}
+
+	return id, true
 }

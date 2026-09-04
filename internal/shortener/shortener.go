@@ -7,13 +7,6 @@ import (
 
 const maxAttempts = 5
 
-var (
-	ErrIDCollision        = errors.New("id collision detected")
-	ErrIDGenerationFailed = errors.New("id generation failed")
-	ErrInvalidURL         = errors.New("invalid url")
-	ErrURLNotFound        = errors.New("url not found")
-)
-
 type URLStorage interface {
 	Save(id, url string) error
 	SaveMany(records map[string]string) error

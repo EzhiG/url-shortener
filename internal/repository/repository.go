@@ -20,8 +20,9 @@ type Storage interface {
 	Close() error
 }
 type MapStorage struct {
-	mu   sync.Mutex
-	data map[string]string
+	mu      sync.Mutex
+	origIdx map[string]string
+	data    map[string]string
 }
 
 func (s *MapStorage) Close() error {
@@ -33,17 +34,25 @@ func (s *MapStorage) Check() error {
 }
 
 func NewMapStorage() *MapStorage {
-	return &MapStorage{data: make(map[string]string)}
+	return &MapStorage{
+		data:    make(map[string]string),
+		origIdx: make(map[string]string),
+	}
 }
 
 func (s *MapStorage) Save(id, val string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if id, ok := s.origIdx[val]; ok {
+		return shortener.NewURLConflictError(id)
+	}
+
 	if _, ok := s.data[id]; ok {
 		return shortener.ErrIDCollision
 	}
 
-	s.data[id] = val
+	s.set(id, val)
 	return nil
 }
 
@@ -72,8 +81,11 @@ func (s *MapStorage) Get(id string) (string, bool) {
 
 func (s *MapStorage) set(id, val string) {
 	s.data[id] = val
+	s.origIdx[val] = id
 }
 
 func (s *MapStorage) remove(id string) {
+	value := s.data[id]
 	delete(s.data, id)
+	delete(s.origIdx, value)
 }

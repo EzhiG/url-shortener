@@ -34,11 +34,18 @@ func New(shortenerService ShortenerService, baseURL string, logger *zap.SugaredL
 func (h *Handler) shortenWithBaseURL(originURL string) (string, error) {
 	id, err := h.shortener.ShortenURL(originURL)
 
-	if err != nil {
+	var conflictError *shortener.URLConflictError
+	if errors.As(err, &conflictError) {
+		id = conflictError.ID
+	} else if err != nil {
 		return "", err
 	}
 
-	shortenedURL, err := url.JoinPath(h.baseURL, id)
+	shortenedURL, joinErr := url.JoinPath(h.baseURL, id)
+	if joinErr != nil {
+		return "", joinErr
+	}
+
 	return shortenedURL, err
 }
 
@@ -71,13 +78,18 @@ func (h *Handler) PlainPostShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err != nil {
+	var conflictError *shortener.URLConflictError
+	if errors.As(err, &conflictError) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusConflict)
+	} else if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	} else {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusCreated)
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
 	_, err = w.Write([]byte(shortenedURL))
 
 	if err != nil {
@@ -101,14 +113,19 @@ func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err != nil {
+	var conflictError *shortener.URLConflictError
+	if errors.As(err, &conflictError) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+	} else if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
 	}
 
 	resp := model.Response{Result: shortenedURL}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
 	err = json.NewEncoder(w).Encode(&resp)
 
 	if err != nil {

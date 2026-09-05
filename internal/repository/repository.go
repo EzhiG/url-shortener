@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/EzhiG/url-shortener/internal/shortener"
@@ -40,36 +41,91 @@ func NewMapStorage() *MapStorage {
 	}
 }
 
-func (s *MapStorage) Save(id, val string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if id, ok := s.origIdx[val]; ok {
-		return shortener.NewURLConflictError(id)
+func (s *MapStorage) checkConflictUnlocked(id, val string) error {
+	if existingID, ok := s.origIdx[val]; ok {
+		return shortener.NewURLConflictError([]shortener.URLConflictItem{{ShortURL: existingID, OriginalURL: val}})
 	}
 
 	if _, ok := s.data[id]; ok {
 		return shortener.ErrIDCollision
 	}
 
-	s.set(id, val)
 	return nil
 }
 
-func (s *MapStorage) SaveMany(records map[string]string) error {
+func (s *MapStorage) checkManyConflictsUnlocked(records map[string]string) error {
+	var conflicts []shortener.URLConflictItem
+
 	for id, url := range records {
-		if err := s.Save(id, url); err != nil {
+		err := s.checkConflictUnlocked(id, url)
+		if err != nil {
+			var conflictErr *shortener.URLConflictError
+			if errors.As(err, &conflictErr) {
+				conflicts = append(conflicts, conflictErr.Items...)
+				continue
+			}
+
 			return err
 		}
 	}
 
+	if len(conflicts) > 0 {
+		return shortener.NewURLConflictError(conflicts)
+	}
+
 	return nil
 }
 
-func (s *MapStorage) removeMany(ids []string) {
-	for _, id := range ids {
-		s.remove(id)
+func (s *MapStorage) setUnlocked(id, val string) {
+	s.data[id] = val
+	s.origIdx[val] = id
+}
+
+func (s *MapStorage) Save(id, val string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.checkConflictUnlocked(id, val); err != nil {
+		return err
 	}
+
+	s.setUnlocked(id, val)
+	return nil
+}
+
+func (s *MapStorage) SaveMany(records map[string]string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	conflictOriginals := make(map[string]bool, len(records))
+	hasConflicts := false
+
+	err := s.checkManyConflictsUnlocked(records)
+	var conflictErr *shortener.URLConflictError
+	if err != nil {
+		if errors.As(err, &conflictErr) {
+			for _, conflictErrItem := range conflictErr.Items {
+				hasConflicts = true
+				conflictOriginals[conflictErrItem.OriginalURL] = true
+			}
+		} else {
+			return err
+		}
+	}
+
+	for id, url := range records {
+		if conflictOriginals[url] {
+			continue
+		}
+
+		s.setUnlocked(id, url)
+	}
+
+	if hasConflicts {
+		return conflictErr
+	}
+
+	return nil
 }
 
 func (s *MapStorage) Get(id string) (string, bool) {
@@ -80,12 +136,7 @@ func (s *MapStorage) Get(id string) (string, bool) {
 }
 
 func (s *MapStorage) set(id, val string) {
-	s.data[id] = val
-	s.origIdx[val] = id
-}
-
-func (s *MapStorage) remove(id string) {
-	value := s.data[id]
-	delete(s.data, id)
-	delete(s.origIdx, value)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.setUnlocked(id, val)
 }

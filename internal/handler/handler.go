@@ -36,7 +36,7 @@ func (h *Handler) shortenWithBaseURL(originURL string) (string, error) {
 
 	var conflictError *shortener.URLConflictError
 	if errors.As(err, &conflictError) {
-		id = conflictError.ID
+		id = conflictError.Items[0].ShortURL
 	} else if err != nil {
 		return "", err
 	}
@@ -143,8 +143,8 @@ func (h *Handler) APIPostBatchShortenURL(w http.ResponseWriter, r *http.Request)
 	}
 
 	urls := make([]string, 0, len(req))
-	for _, r := range req {
-		urls = append(urls, r.OriginalURL)
+	for _, item := range req {
+		urls = append(urls, item.OriginalURL)
 	}
 
 	records, err := h.shortener.ShortenManyURLs(urls)

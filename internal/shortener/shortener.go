@@ -71,6 +71,16 @@ func (s *Service) ShortenManyURLs(originals []string) (map[string]string, error)
 			continue
 		}
 
+		var conflictErr *URLConflictError
+		if errors.As(err, &conflictErr) {
+			swapped := s.swap(records)
+			for _, item := range conflictErr.Items {
+				swapped[item.OriginalURL] = item.ShortURL
+			}
+
+			return swapped, nil
+		}
+
 		return s.swap(records), err
 	}
 

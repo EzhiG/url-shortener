@@ -3,6 +3,7 @@ package shortener
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
@@ -12,14 +13,23 @@ var (
 	ErrURLNotFound        = errors.New("url not found")
 )
 
+type URLConflictItem struct {
+	ShortURL    string
+	OriginalURL string
+}
+
 type URLConflictError struct {
-	ID string
+	Items []URLConflictItem
 }
 
 func (e *URLConflictError) Error() string {
-	return fmt.Sprintf("Original URL already exists: %s", e.ID)
+	urls := make([]string, 0, len(e.Items))
+	for _, item := range e.Items {
+		urls = append(urls, item.ShortURL+"->"+item.OriginalURL)
+	}
+	return fmt.Sprintf("Original URLs already exists: %s", strings.Join(urls, ", "))
 }
 
-func NewURLConflictError(id string) *URLConflictError {
-	return &URLConflictError{ID: id}
+func NewURLConflictError(items []URLConflictItem) *URLConflictError {
+	return &URLConflictError{items}
 }

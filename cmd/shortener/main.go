@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/EzhiG/url-shortener/internal/config"
-	"github.com/EzhiG/url-shortener/internal/config/db"
 	"github.com/EzhiG/url-shortener/internal/handler"
 	"github.com/EzhiG/url-shortener/internal/logger"
 	"github.com/EzhiG/url-shortener/internal/repository"
@@ -47,11 +46,7 @@ func main() {
 
 func createAppStorage(cfg *config.Config) (repository.Storage, error) {
 	if cfg.DatabaseDSN != "" {
-		database, err := db.NewPostgres(cfg.DatabaseDSN)
-		if err != nil {
-			return nil, err
-		}
-		return repository.NewDBStorage(database), nil
+		return repository.NewDBStorage(cfg.DatabaseDSN)
 	}
 	if cfg.FileStoragePath != "" {
 		storage, err := repository.NewFileStorage(cfg.FileStoragePath)

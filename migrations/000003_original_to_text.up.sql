@@ -1,0 +1,1 @@
+ALTER TABLE urls ALTER COLUMN original TYPE TEXT;

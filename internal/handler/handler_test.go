@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/EzhiG/url-shortener/internal/auth"
 	"github.com/EzhiG/url-shortener/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,11 +22,13 @@ import (
 
 const testBaseURL = "http://localhost:8080"
 const exampleURL = "https://example.com"
+const userID = "testUser"
 
 func newTestHandler(storage *repository.MapStorage) *Handler {
-	svc := shortener.New(storage)
+	shortenerSvc := shortener.New(storage)
+	authSvc := auth.New("SuperSecretKey")
 	logger := zap.NewNop().Sugar()
-	return New(svc, testBaseURL, logger)
+	return New(authSvc, shortenerSvc, testBaseURL, logger)
 }
 
 type postWant struct {
@@ -79,7 +82,7 @@ func TestPlainPostShortenURL(t *testing.T) {
 			id := strings.TrimPrefix(string(body), testBaseURL+"/")
 			saved, ok := storage.Get(id)
 			require.True(t, ok)
-			assert.Equal(t, tt.body, saved)
+			assert.Equal(t, tt.body, saved.OriginalURL)
 		})
 	}
 }
@@ -128,7 +131,7 @@ func TestAPIPostShortenURL(t *testing.T) {
 			id := strings.TrimPrefix(res.Result, testBaseURL+"/")
 			saved, ok := storage.Get(id)
 			require.True(t, ok)
-			assert.Equal(t, exampleURL, saved)
+			assert.Equal(t, exampleURL, saved.OriginalURL)
 		})
 	}
 }
@@ -164,7 +167,7 @@ func TestGetShortenURL(t *testing.T) {
 			storage := repository.NewMapStorage()
 
 			if tt.storedURL != "" {
-				storage.Save(tt.id, tt.storedURL)
+				storage.Save(tt.id, tt.storedURL, userID)
 			}
 
 			h := newTestHandler(storage)

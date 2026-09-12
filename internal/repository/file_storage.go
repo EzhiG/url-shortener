@@ -7,8 +7,14 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/EzhiG/url-shortener/internal/model"
 	"github.com/EzhiG/url-shortener/internal/shortener"
 )
+
+type FileStorageRecord struct {
+	model.URLRecord
+	UUID string `json:"uuid"`
+}
 
 type FileStorage struct {
 	mapStorage *MapStorage
@@ -43,28 +49,31 @@ func (s *FileStorage) restore() error {
 	scanner := bufio.NewScanner(s.file)
 
 	for scanner.Scan() {
-		var record StorageRecord
+		var record FileStorageRecord
 		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
 			return err
 		}
 
-		s.mapStorage.set(record.ShortURL, record.OriginalURL)
+		s.mapStorage.set(record.ShortURL, record.OriginalURL, record.UserID)
 		s.nextID++
 	}
 
 	return nil
 }
 
-func (s *FileStorage) Save(id, url string) error {
+func (s *FileStorage) Save(id, url, userID string) error {
 	s.mapStorage.mu.Lock()
 	defer s.mapStorage.mu.Unlock()
 
-	if err := s.mapStorage.checkConflictUnlocked(id, url); err != nil {
+	if err := s.mapStorage.checkConflictUnlocked(id, url, userID); err != nil {
 		return err
 	}
 
 	s.nextID++
-	record := StorageRecord{UUID: strconv.Itoa(s.nextID), ShortURL: id, OriginalURL: url}
+	record := FileStorageRecord{
+		UUID:      strconv.Itoa(s.nextID),
+		URLRecord: model.URLRecord{OriginalURL: url, UserID: userID, ShortURL: id},
+	}
 	data, err := json.Marshal(record)
 	if err != nil {
 		return err
@@ -75,18 +84,18 @@ func (s *FileStorage) Save(id, url string) error {
 		return err
 	}
 
-	s.mapStorage.setUnlocked(id, url)
+	s.mapStorage.setUnlocked(id, url, userID)
 	return nil
 }
 
-func (s *FileStorage) SaveMany(records map[string]string) error {
+func (s *FileStorage) SaveMany(records map[string]string, userID string) error {
 	s.mapStorage.mu.Lock()
 	defer s.mapStorage.mu.Unlock()
 
 	conflictOriginals := make(map[string]bool, len(records))
 	hasConflicts := false
 
-	err := s.mapStorage.checkManyConflictsUnlocked(records)
+	err := s.mapStorage.checkManyConflictsUnlocked(records, userID)
 	var conflictErr *shortener.URLConflictError
 	if err != nil {
 		if errors.As(err, &conflictErr) {
@@ -106,7 +115,10 @@ func (s *FileStorage) SaveMany(records map[string]string) error {
 		}
 
 		s.nextID++
-		record := StorageRecord{UUID: strconv.Itoa(s.nextID), ShortURL: id, OriginalURL: url}
+		record := FileStorageRecord{
+			UUID:      strconv.Itoa(s.nextID),
+			URLRecord: model.URLRecord{UserID: userID, OriginalURL: url, ShortURL: id},
+		}
 		chunk, err := json.Marshal(record)
 		if err != nil {
 			return err
@@ -126,7 +138,7 @@ func (s *FileStorage) SaveMany(records map[string]string) error {
 			continue
 		}
 
-		s.mapStorage.setUnlocked(id, url)
+		s.mapStorage.setUnlocked(id, url, userID)
 	}
 
 	if hasConflicts {
@@ -136,8 +148,12 @@ func (s *FileStorage) SaveMany(records map[string]string) error {
 	return nil
 }
 
-func (s *FileStorage) Get(id string) (string, bool) {
+func (s *FileStorage) Get(id string) (model.URLRecord, bool) {
 	return s.mapStorage.Get(id)
+}
+
+func (s *FileStorage) GetByUserID(userID string) ([]model.URLRecord, error) {
+	return s.mapStorage.GetByUserID(userID)
 }
 
 func (s *FileStorage) CloseFile() error {

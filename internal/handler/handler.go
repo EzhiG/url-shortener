@@ -13,8 +13,10 @@ import (
 )
 
 type ShortenerService interface {
-	ShortenURL(str string) (string, error)
+	ShortenURL(original string) (string, error)
+	ShortenManyURLs(original []string) (map[string]string, error)
 	ExpandURL(id string) (string, error)
+	Ping() error
 }
 
 type Middleware func(http.HandlerFunc) http.HandlerFunc
@@ -32,11 +34,18 @@ func New(shortenerService ShortenerService, baseURL string, logger *zap.SugaredL
 func (h *Handler) shortenWithBaseURL(originURL string) (string, error) {
 	id, err := h.shortener.ShortenURL(originURL)
 
-	if err != nil {
+	var conflictError *shortener.URLConflictError
+	if errors.As(err, &conflictError) {
+		id = conflictError.Items[0].ShortURL
+	} else if err != nil {
 		return "", err
 	}
 
-	shortenedURL, err := url.JoinPath(h.baseURL, id)
+	shortenedURL, joinErr := url.JoinPath(h.baseURL, id)
+	if joinErr != nil {
+		return "", joinErr
+	}
+
 	return shortenedURL, err
 }
 
@@ -69,13 +78,18 @@ func (h *Handler) PlainPostShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err != nil {
+	var conflictError *shortener.URLConflictError
+	if errors.As(err, &conflictError) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusConflict)
+	} else if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	} else {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusCreated)
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
 	_, err = w.Write([]byte(shortenedURL))
 
 	if err != nil {
@@ -83,7 +97,7 @@ func (h *Handler) PlainPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) APIPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	var req model.Request
 	defer r.Body.Close()
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -99,12 +113,69 @@ func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var conflictError *shortener.URLConflictError
+	if errors.As(err, &conflictError) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+	} else if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+	}
+
+	resp := model.Response{Result: shortenedURL}
+	err = json.NewEncoder(w).Encode(&resp)
+
+	if err != nil {
+		h.logger.Error(err.Error())
+	}
+}
+
+func (h *Handler) APIPostBatchShortenURL(w http.ResponseWriter, r *http.Request) {
+	var req model.BatchRequest
+	defer r.Body.Close()
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	resp := model.Response{Result: shortenedURL}
+	urls := make([]string, 0, len(req))
+	for _, item := range req {
+		urls = append(urls, item.OriginalURL)
+	}
+
+	records, err := h.shortener.ShortenManyURLs(urls)
+
+	if err != nil {
+		if errors.Is(err, shortener.ErrIDGenerationFailed) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	resp := model.BatchResponse{}
+
+	for _, r := range req {
+		shortURL, ok := records[r.OriginalURL]
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		shortURL, err = url.JoinPath(h.baseURL, shortURL)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		resp = append(resp, model.BatchResponseItem{CorrelationID: r.CorrelationID, ShortURL: shortURL})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	err = json.NewEncoder(w).Encode(&resp)
@@ -112,4 +183,13 @@ func (h *Handler) ApiPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error(err.Error())
 	}
+}
+
+func (h *Handler) Ping(w http.ResponseWriter, _ *http.Request) {
+	if err := h.shortener.Ping(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

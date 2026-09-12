@@ -18,11 +18,13 @@ func main() {
 	}
 	defer sugar.Sync()
 	cfg := config.New()
-	storage, err := repository.NewFileStorage(cfg.FileStoragePath)
+
+	storage, err := createAppStorage(cfg)
 	if err != nil {
 		sugar.Fatal(err)
 	}
-	defer storage.CloseFile()
+	defer storage.Close()
+
 	service := shortener.New(storage)
 	h := handler.New(service, cfg.BaseURL, sugar)
 	mw := logger.NewMiddleware(sugar)
@@ -30,12 +32,26 @@ func main() {
 	router := chi.NewRouter()
 	router.Use(mw, handler.MaxBytesMiddleware, handler.GzipMiddleware)
 	router.Post("/", h.PlainPostShortenURL)
-	router.Post("/api/shorten", h.ApiPostShortenURL)
+	router.Post("/api/shorten", h.APIPostShortenURL)
+	router.Post("/api/shorten/batch", h.APIPostBatchShortenURL)
 	router.Get("/{id}", h.GetShortenURL)
+	router.Get("/ping", h.Ping)
 
 	err = http.ListenAndServe(cfg.Address, router)
 
 	if err != nil {
 		sugar.Fatal(err)
 	}
+}
+
+func createAppStorage(cfg *config.Config) (repository.Storage, error) {
+	if cfg.DatabaseDSN != "" {
+		return repository.NewDBStorage(cfg.DatabaseDSN)
+	}
+	if cfg.FileStoragePath != "" {
+		storage, err := repository.NewFileStorage(cfg.FileStoragePath)
+		return storage, err
+	}
+
+	return repository.NewMapStorage(), nil
 }

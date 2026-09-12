@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 
+	"github.com/EzhiG/url-shortener/internal/auth"
 	"github.com/EzhiG/url-shortener/internal/config"
 	"github.com/EzhiG/url-shortener/internal/handler"
 	"github.com/EzhiG/url-shortener/internal/logger"
@@ -25,15 +26,18 @@ func main() {
 	}
 	defer storage.Close()
 
-	service := shortener.New(storage)
-	h := handler.New(service, cfg.BaseURL, sugar)
-	mw := logger.NewMiddleware(sugar)
+	shortenerService := shortener.New(storage)
+	authService := auth.New("SuperSecretKey") // TODO: move to ENV
+	h := handler.New(authService, shortenerService, cfg.BaseURL, sugar)
+	loggerMw := logger.NewMiddleware(sugar)
+	authMw := handler.NewAuthMiddleware(authService)
 
 	router := chi.NewRouter()
-	router.Use(mw, handler.MaxBytesMiddleware, handler.GzipMiddleware)
+	router.Use(loggerMw, handler.MaxBytesMiddleware, handler.GzipMiddleware, authMw)
 	router.Post("/", h.PlainPostShortenURL)
 	router.Post("/api/shorten", h.APIPostShortenURL)
 	router.Post("/api/shorten/batch", h.APIPostBatchShortenURL)
+	router.Get("/api/user/urls", h.APIGetUserURLs)
 	router.Get("/{id}", h.GetShortenURL)
 	router.Get("/ping", h.Ping)
 

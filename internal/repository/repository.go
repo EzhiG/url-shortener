@@ -4,26 +4,33 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/EzhiG/url-shortener/internal/model"
 	"github.com/EzhiG/url-shortener/internal/shortener"
 )
 
-type StorageRecord struct {
-	UUID        string `json:"uuid"`
-	ShortURL    string `json:"short_url"`
-	OriginalURL string `json:"original_url"`
-}
-
 type Storage interface {
-	Save(id, url string) error
-	SaveMany(records map[string]string) error
-	Get(id string) (string, bool)
+	Save(id, url, userID string) error
+	SaveMany(records map[string]string, userID string) error
+	Get(id string) (model.URLRecord, bool)
+	GetByUserID(userID string) ([]model.URLRecord, error)
 	Check() error
 	Close() error
 }
+
 type MapStorage struct {
-	mu      sync.Mutex
-	origIdx map[string]string
-	data    map[string]string
+	mu          sync.Mutex
+	userOrigIdx map[string]string
+	data        map[string]model.URLRecord
+}
+
+func NewMapStorage() *MapStorage {
+	return &MapStorage{
+		data:        make(map[string]model.URLRecord),
+		userOrigIdx: make(map[string]string),
+	}
+}
+func getIdxKey(url, userID string) string {
+	return userID + "_" + url
 }
 
 func (s *MapStorage) Close() error {
@@ -34,15 +41,8 @@ func (s *MapStorage) Check() error {
 	return nil
 }
 
-func NewMapStorage() *MapStorage {
-	return &MapStorage{
-		data:    make(map[string]string),
-		origIdx: make(map[string]string),
-	}
-}
-
-func (s *MapStorage) checkConflictUnlocked(id, val string) error {
-	if existingID, ok := s.origIdx[val]; ok {
+func (s *MapStorage) checkConflictUnlocked(id, val, userID string) error {
+	if existingID, ok := s.userOrigIdx[getIdxKey(val, userID)]; ok {
 		return shortener.NewURLConflictError([]shortener.URLConflictItem{{ShortURL: existingID, OriginalURL: val}})
 	}
 
@@ -53,11 +53,11 @@ func (s *MapStorage) checkConflictUnlocked(id, val string) error {
 	return nil
 }
 
-func (s *MapStorage) checkManyConflictsUnlocked(records map[string]string) error {
+func (s *MapStorage) checkManyConflictsUnlocked(records map[string]string, userID string) error {
 	var conflicts []shortener.URLConflictItem
 
 	for id, url := range records {
-		err := s.checkConflictUnlocked(id, url)
+		err := s.checkConflictUnlocked(id, url, userID)
 		if err != nil {
 			var conflictErr *shortener.URLConflictError
 			if errors.As(err, &conflictErr) {
@@ -76,31 +76,31 @@ func (s *MapStorage) checkManyConflictsUnlocked(records map[string]string) error
 	return nil
 }
 
-func (s *MapStorage) setUnlocked(id, val string) {
-	s.data[id] = val
-	s.origIdx[val] = id
+func (s *MapStorage) setUnlocked(id, val, userID string) {
+	s.data[id] = model.URLRecord{UserID: userID, OriginalURL: val, ShortURL: id}
+	s.userOrigIdx[getIdxKey(val, userID)] = id
 }
 
-func (s *MapStorage) Save(id, val string) error {
+func (s *MapStorage) Save(id, val, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.checkConflictUnlocked(id, val); err != nil {
+	if err := s.checkConflictUnlocked(id, val, userID); err != nil {
 		return err
 	}
 
-	s.setUnlocked(id, val)
+	s.setUnlocked(id, val, userID)
 	return nil
 }
 
-func (s *MapStorage) SaveMany(records map[string]string) error {
+func (s *MapStorage) SaveMany(records map[string]string, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	conflictOriginals := make(map[string]bool, len(records))
 	hasConflicts := false
 
-	err := s.checkManyConflictsUnlocked(records)
+	err := s.checkManyConflictsUnlocked(records, userID)
 	var conflictErr *shortener.URLConflictError
 	if err != nil {
 		if errors.As(err, &conflictErr) {
@@ -118,7 +118,7 @@ func (s *MapStorage) SaveMany(records map[string]string) error {
 			continue
 		}
 
-		s.setUnlocked(id, url)
+		s.setUnlocked(id, url, userID)
 	}
 
 	if hasConflicts {
@@ -128,15 +128,30 @@ func (s *MapStorage) SaveMany(records map[string]string) error {
 	return nil
 }
 
-func (s *MapStorage) Get(id string) (string, bool) {
+func (s *MapStorage) Get(id string) (model.URLRecord, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	val, ok := s.data[id]
-	return val, ok
+	record, ok := s.data[id]
+	return record, ok
 }
 
-func (s *MapStorage) set(id, val string) {
+func (s *MapStorage) GetByUserID(userID string) ([]model.URLRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.setUnlocked(id, val)
+
+	records := make([]model.URLRecord, 0)
+
+	for _, record := range s.data {
+		if record.UserID == userID {
+			records = append(records, record)
+		}
+	}
+
+	return records, nil
+}
+
+func (s *MapStorage) set(id, val, userID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.setUnlocked(id, val, userID)
 }

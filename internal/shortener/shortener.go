@@ -3,14 +3,17 @@ package shortener
 import (
 	"errors"
 	"net/url"
+
+	"github.com/EzhiG/url-shortener/internal/model"
 )
 
 const maxAttempts = 5
 
 type URLStorage interface {
-	Save(id, url string) error
-	SaveMany(records map[string]string) error
-	Get(id string) (string, bool)
+	Save(id, url, userID string) error
+	SaveMany(records map[string]string, userID string) error
+	Get(id string) (model.URLRecord, bool)
+	GetByUserID(userID string) ([]model.URLRecord, error)
 	Check() error
 }
 
@@ -22,15 +25,15 @@ func New(storage URLStorage) *Service {
 	return &Service{storage: storage}
 }
 
-func (s *Service) ShortenURL(str string) (string, error) {
-	parsedURL, err := s.parse(str)
+func (s *Service) ShortenURL(original, userID string) (string, error) {
+	parsedURL, err := s.parse(original)
 	if err != nil {
 		return "", err
 	}
 
 	for range maxAttempts {
 		id := generateID()
-		err := s.storage.Save(id, parsedURL)
+		err := s.storage.Save(id, parsedURL, userID)
 
 		if errors.Is(err, ErrIDCollision) {
 			continue
@@ -57,7 +60,7 @@ func (s *Service) generateURLMap(originals []string) (map[string]string, error) 
 	return records, nil
 }
 
-func (s *Service) ShortenManyURLs(originals []string) (map[string]string, error) {
+func (s *Service) ShortenManyURLs(originals []string, userID string) (map[string]string, error) {
 	for range maxAttempts {
 		records, err := s.generateURLMap(originals)
 
@@ -65,7 +68,7 @@ func (s *Service) ShortenManyURLs(originals []string) (map[string]string, error)
 			return nil, err
 		}
 
-		err = s.storage.SaveMany(records)
+		err = s.storage.SaveMany(records, userID)
 
 		if errors.Is(err, ErrIDCollision) {
 			continue
@@ -104,11 +107,15 @@ func (s *Service) ExpandURL(id string) (string, error) {
 		return "", ErrURLNotFound
 	}
 
-	return val, nil
+	return val.OriginalURL, nil
 }
 
 func (s *Service) Ping() error {
 	return s.storage.Check()
+}
+
+func (s *Service) GetURLsByUserID(userID string) ([]model.URLRecord, error) {
+	return s.storage.GetByUserID(userID)
 }
 
 func (s *Service) parse(original string) (string, error) {

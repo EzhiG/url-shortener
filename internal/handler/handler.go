@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,26 +14,42 @@ import (
 )
 
 type ShortenerService interface {
-	ShortenURL(original string) (string, error)
-	ShortenManyURLs(original []string) (map[string]string, error)
+	ShortenURL(original, userID string) (string, error)
+	ShortenManyURLs(original []string, userID string) (map[string]string, error)
 	ExpandURL(id string) (string, error)
+	GetURLsByUserID(userID string) ([]model.URLRecord, error)
 	Ping() error
+}
+
+type AuthService interface {
+	WithUserID(ctx context.Context, userID string) context.Context
+	UserIDFromContext(ctx context.Context) string
+	IsTokenExpiredOnlyError(err error) bool
+	GenerateUserID() (string, error)
+	BuildToken(userID string) (string, error)
+	ParseToken(tokenString string) (string, error)
 }
 
 type Middleware func(http.HandlerFunc) http.HandlerFunc
 
 type Handler struct {
 	shortener ShortenerService
+	auth      AuthService
 	baseURL   string
 	logger    *zap.SugaredLogger
 }
 
-func New(shortenerService ShortenerService, baseURL string, logger *zap.SugaredLogger) *Handler {
-	return &Handler{shortener: shortenerService, baseURL: baseURL, logger: logger}
+func New(auth AuthService, shortenerService ShortenerService, baseURL string, logger *zap.SugaredLogger) *Handler {
+	return &Handler{
+		auth:      auth,
+		shortener: shortenerService,
+		baseURL:   baseURL,
+		logger:    logger,
+	}
 }
 
-func (h *Handler) shortenWithBaseURL(originURL string) (string, error) {
-	id, err := h.shortener.ShortenURL(originURL)
+func (h *Handler) shortenWithBaseURL(originURL, userID string) (string, error) {
+	id, err := h.shortener.ShortenURL(originURL, userID)
 
 	var conflictError *shortener.URLConflictError
 	if errors.As(err, &conflictError) {
@@ -62,6 +79,47 @@ func (h *Handler) GetShortenURL(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
+func (h *Handler) APIGetUserURLs(w http.ResponseWriter, r *http.Request) {
+	token := GetAuthCookie(r)
+	if token == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	userID, err := h.auth.ParseToken(token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	urls, err := h.shortener.GetURLsByUserID(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	resp := make(model.URLsResponse, len(urls))
+	for i, urlItem := range urls {
+		shortenedURL, err := url.JoinPath(h.baseURL, urlItem.ShortURL)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		resp[i] = model.URLResponseItem{ShortURL: shortenedURL, OriginalURL: urlItem.OriginalURL}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(&resp)
+
+	if err != nil {
+		h.logger.Error(err.Error())
+	}
+}
+
 func (h *Handler) PlainPostShortenURL(w http.ResponseWriter, r *http.Request) {
 	data, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
@@ -70,8 +128,8 @@ func (h *Handler) PlainPostShortenURL(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	shortenedURL, err := h.shortenWithBaseURL(string(data))
+	userID := h.auth.UserIDFromContext(r.Context())
+	shortenedURL, err := h.shortenWithBaseURL(string(data), userID)
 
 	if errors.Is(err, shortener.ErrIDGenerationFailed) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -105,8 +163,8 @@ func (h *Handler) APIPostShortenURL(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	shortenedURL, err := h.shortenWithBaseURL(req.URL)
+	userID := h.auth.UserIDFromContext(r.Context())
+	shortenedURL, err := h.shortenWithBaseURL(req.URL, userID)
 
 	if errors.Is(err, shortener.ErrIDGenerationFailed) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -146,8 +204,8 @@ func (h *Handler) APIPostBatchShortenURL(w http.ResponseWriter, r *http.Request)
 	for _, item := range req {
 		urls = append(urls, item.OriginalURL)
 	}
-
-	records, err := h.shortener.ShortenManyURLs(urls)
+	userID := h.auth.UserIDFromContext(r.Context())
+	records, err := h.shortener.ShortenManyURLs(urls, userID)
 
 	if err != nil {
 		if errors.Is(err, shortener.ErrIDGenerationFailed) {

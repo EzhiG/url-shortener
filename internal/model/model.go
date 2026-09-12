@@ -20,3 +20,16 @@ type BatchResponseItem struct {
 }
 
 type BatchResponse []BatchResponseItem
+
+type URLResponseItem struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
+type URLsResponse []URLResponseItem
+
+type URLRecord struct {
+	UserID      string `json:"user_id"`
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
